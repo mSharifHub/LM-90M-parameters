@@ -1,0 +1,13 @@
+hf_format/
+data/
+.bin
+__pycache__/
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/
+*.swp
+*.swo
+.huggingface/
+.cache/

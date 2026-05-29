@@ -1,9 +1,10 @@
 import re
 from collections import defaultdict
+import json
+
 
 class BPETokenizer:
     SPECIAL_TOKENS = ["<|unk|>", "<|endoftext|>"]
-
 
     def __init__(self, pattern, num_merges=1000):
         self.regex = re.compile(pattern)
@@ -12,7 +13,65 @@ class BPETokenizer:
         self.token_to_id = {}
         self.id_to_token = {}
 
-    def build_vocab(self,dataset):
+    def save(self, filepath):
+
+        data = {
+            "pattern": self.regex.pattern,
+            "num_merges": self.num_merges,
+            "merges": self.merges,
+            "token_to_id": self.token_to_id
+
+        }
+
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                print(f"Successfully savedd tokenizer state to {filepath}")
+                return True
+        except IOError as err:
+            print(f"IOERROR: Could not write to {filepath}. Check permission or disk space. Details:{err})
+            return False
+        except Exception as err:
+            print(f"An error occurred. Details: {err})
+            return False
+
+    @classmethod
+    def load(cls, filepath):
+
+        try:
+
+            with open(filepath, 'r', encoding="utf-8") as f:
+
+                data = json.load(f)
+                tokenizer = cls(pattern=data["pattern"], num_merges=data["num_merges"])
+                tokenizer.merges = [tuple(m) for m in data["merges"]]
+                tokenizer.token_to_id = data["token_to_id"]
+                tokenizer.id_to_token = {v: k for k, v in tokenizer.token_to_id.items()}
+
+            print(f"Successfully loaded tokenizer from {filepath}")
+
+            return tokenizer
+
+
+        except FileNotFoundError as err:
+
+            print(f"Error: The file {filepath} was not found. Please check the path.")
+            return None
+
+        except json.json.JSONDecodeError as err:
+
+            print(f"Error: The file {filepath} contains corrupted or invalid JSON. Details: {err}")
+            return None
+
+        except KeyError as err:
+            print(f"Error: The JSON file is missing a required key: {err}. Is it an older version?")
+            return None
+
+        except Exception as err:
+            print(f"An unexpected error occurred while loading: {e}")
+            return None
+
+    def build_vocab(self, dataset):
         word_freqs = self._get_word_freqs(dataset)
         self.merges = self._train_bpe(word_freqs)
 
@@ -23,33 +82,32 @@ class BPETokenizer:
         self.token_to_id = {tok: idx for idx, tok in enumerate(all_tokens)}
         self.id_to_token = {idx: tok for tok, idx in self.token_to_id.items()}
 
-
-    def _get_word_freqs(self,dataset):
+    def _get_word_freqs(self, dataset):
         word_freqs = defaultdict(int)
         for row in dataset:
             for word in re.findall(self.regex, row['text']):
-                word_freqs[tuple(word)] +=1
+                word_freqs[tuple(word)] += 1
         return word_freqs
 
     def _get_pairs(self, word_freqs):
         pairs = defaultdict(int)
         for word, freq in word_freqs.items():
-            for i in range(len(word) -1):
+            for i in range(len(word) - 1):
                 pairs[(word[i]), word[i + 1]] += freq
         return pairs
 
-    def _merge_pair(self,pair, word_freqs):
-        a,b, merged = pair[0], pair[1], pair[0] + pair[1]
+    def _merge_pair(self, pair, word_freqs):
+        a, b, merged = pair[0], pair[1], pair[0] + pair[1]
         new_freqs = {}
         for word, freq, in word_freqs.items():
             new_word, i = [], 0
             while i < len(word):
-                if i < len(word) - 1 and word[i] == a and word[i +1] == b:
+                if i < len(word) - 1 and word[i] == a and word[i + 1] == b:
                     new_word.append(merged)
-                    i +=2
+                    i += 2
                 else:
                     new_word.append(word[i])
-                    i +=1
+                    i += 1
             new_freqs[tuple(new_word)] = freq
         return new_freqs
 
@@ -63,7 +121,6 @@ class BPETokenizer:
             merges.append(best)
             word_freqs = self._merge_pair(best, word_freqs)
         return merges
-
 
     def _apply_merges(self, chars):
         tokens = list(chars)
@@ -95,5 +152,3 @@ class BPETokenizer:
     @property
     def vocab_size(self):
         return len(self.token_to_id)
-
-
